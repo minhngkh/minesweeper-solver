@@ -12,7 +12,7 @@ if __name__ == "__main__":
 
     try:
         start = time.process_time()
-        solution = ms.backtracking_solve2(data)
+        solution = ms.brute_force_solve(data)
         elapsed = time.process_time() - start
         if solution:
             ms.print_field(solution)

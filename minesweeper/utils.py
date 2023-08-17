@@ -6,7 +6,7 @@ FLAGGED_PRINT_CHAR = "⚐"
 EMPTY_PRINT_CHAR = " "
 
 
-def read_field(file_name: str) -> list[int]:
+def read_field(file_name: str) -> Field:
     """Reads input file and returns an array"""
     with open(file_name, "r") as f:
         data = []
@@ -18,9 +18,9 @@ def read_field(file_name: str) -> list[int]:
                 if item.isdigit():
                     row.append(int(item))
                 elif item == UNOPENED_CHAR:
-                    row.append(UNOPENED)
+                    row.append(UNOPENED_VAL)
                 elif item == FLAGGED_CHAR:
-                    row.append(FLAGGED)
+                    row.append(FLAGGED_VAL)
                 else:
                     raise ValueError("Invalid character in input file")
 
@@ -29,15 +29,15 @@ def read_field(file_name: str) -> list[int]:
     return data
 
 
-def write_field(data: list[int], file_name: str) -> None:
+def write_field(data: Field, file_name: str) -> None:
     """Writes array to file"""
     with open(file_name, "w") as f:
         for row in data:
             to_write = []
             for item in row:
-                if item == UNOPENED:
+                if item == UNOPENED_VAL:
                     to_write.append(UNOPENED_CHAR)
-                elif item == FLAGGED:
+                elif item == FLAGGED_VAL:
                     to_write.append(FLAGGED_CHAR)
                 else:
                     to_write.append(str(item))
@@ -46,12 +46,12 @@ def write_field(data: list[int], file_name: str) -> None:
             f.write("\n")
 
 
-def print_field(data: list[int]):
+def print_field(data: Field) -> None:
     for row in data:
         for cell in row:
-            if cell == UNOPENED:
+            if cell == UNOPENED_VAL:
                 print(UNOPENED_PRINT_CHAR, end=" ")
-            elif cell == FLAGGED:
+            elif cell == FLAGGED_VAL:
                 print(FLAGGED_PRINT_CHAR, end=" ")
             else:
                 if cell == 0:

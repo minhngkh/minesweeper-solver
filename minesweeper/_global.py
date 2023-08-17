@@ -1,7 +1,13 @@
 from enum import Enum
+from typing import TypeAlias
+from collections import namedtuple
 
-UNOPENED = -2
-FLAGGED = -1
+
+Field: TypeAlias = list[list[int]]
+Clause: TypeAlias = list[int]
+
+UNOPENED_VAL = -2
+FLAGGED_VAL = -1
 
 UNOPENED_CHAR = "_"
 FLAGGED_CHAR = "X"

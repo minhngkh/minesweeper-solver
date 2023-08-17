@@ -3,14 +3,18 @@ from minesweeper._global import *
 import pysat.solvers
 import copy
 import heapq
-from enum import Enum
+from typing import Iterable, Generator
+
+__all__ = ["pysat_solve", "brute_force_solve", "backtracking_solve"]
 
 
-def combinations(iterable, r):
-    "Python implementation of itertools.combinations"
+def combinations(iterable: Iterable, r: int) -> Generator[tuple, None, None]:
+    """Python implementation of itertools.combinations
 
-    # combinations('ABCD', 2) --> AB AC AD BC BD CD
-    # combinations(range(4), 3) --> 012 013 023 123
+    combinations('ABCD', 2) --> AB AC AD BC BD CD
+    #combinations(range(4), 3) --> 012 013 023 123
+    """
+
     pool = tuple(iterable)
     n = len(pool)
     if r > n:
@@ -29,11 +33,11 @@ def combinations(iterable, r):
         yield tuple(pool[i] for i in indices)
 
 
-def construct_CNF_clauses(field):
+def construct_CNF_clauses(field: Field) -> tuple[list[Clause], list[int]]:
     height = len(field)
     width = len(field[0])
     clauses = []
-    vars_ = set()
+    vars_ = []
 
     # Add CNF clauses for each opened cell.
     for i in range(height):
@@ -42,7 +46,11 @@ def construct_CNF_clauses(field):
             # to create clauses.
             # We also ignore "opened cell" that is 0, because in the minesweeper game,
             # every cell around it has already been opened by default.
-            if field[i][j] == 0 or field[i][j] == FLAGGED or field[i][j] == UNOPENED:
+            if (
+                field[i][j] == 0
+                or field[i][j] == FLAGGED_VAL
+                or field[i][j] == UNOPENED_VAL
+            ):
                 continue
 
             surrounded_mines = field[i][j]
@@ -52,17 +60,18 @@ def construct_CNF_clauses(field):
                     if y == i and x == j:
                         continue
 
-                    if field[y][x] == FLAGGED:
+                    if field[y][x] == FLAGGED_VAL:
                         surrounded_mines -= 1
                         continue
 
-                    if field[y][x] != UNOPENED:
+                    if field[y][x] != UNOPENED_VAL:
                         continue
 
                     # Convert 2D coordinates to 1D (starting from 1)
                     pos = y * width + x + 1
                     neighbors.append(pos)
-                    vars_.add(pos)
+
+            vars_.extend(neighbors)
 
             # Encode "at most" constraint as CNF clauses
             for c in combinations(neighbors, surrounded_mines + 1):
@@ -91,111 +100,35 @@ def pysat_solve(field):
     flagged_field = copy.deepcopy(field)
     for var in vars_:
         if not solver.solve(assumptions=[-var]):
-            flagged_field[(var - 1) // width][(var - 1) % width] = FLAGGED
+            flagged_field[(var - 1) // width][(var - 1) % width] = FLAGGED_VAL
 
     solver.delete()
     return flagged_field
 
 
 class KB:
-    def __init__(self, from_clauses: list[list[int]] = None, vars_: set[int] = None):
-        self.clauses: list[list[int]] = []
-        self.vars: set[int] = set()
-
-        if from_clauses is not None:
-            self.clauses = from_clauses
-        if vars_ is not None:
+    def __init__(
+        self,
+        from_clauses: list[Clause] | None = None,
+        vars_: list[int] | None = None,
+    ) -> None:
+        if from_clauses is None:
+            self.clauses = []
+        else:
+            self.clauses = from_clauses 
+        if vars_ is None:
+            self.vars = []
+        else:
             self.vars = vars_
 
-    def add_clause(self, clause: list[int]):
+    def add_clause(self, clause: list[int]) -> None:
         self.clauses.append(clause)
-        self.vars.update(map(abs, clause))
+        self.vars.extend(map(abs, clause))
 
-    def add_clauses(self, clauses: list[list[int]]):
+    def add_clauses(self, clauses: list[list[int]]) -> None:
         self.clauses.extend(clauses)
         for clause in clauses:
-            self.vars.update(map(abs, clause))
-
-    def is_satisfied(self, model: dict[int, bool]) -> bool:
-        """Check if a model (can be partial) satisfies all clauses
-
-        Args:
-            model (dict[int, bool]): The model to check
-
-        Returns:
-            bool: True if the model satisfies all clauses, False otherwise
-        """
-        for clause in self.clauses:
-            correct = False
-
-            for var in clause:
-                if abs(var) in model:
-                    if var > 0:
-                        if model[abs(var)]:
-                            correct = True
-                            break
-                    else:
-                        if not model[abs(var)]:
-                            correct = True
-                            break
-
-            if not correct:
-                return False
-
-        return True
-
-    def is_satisfied_t(self, model: dict[int, bool]) -> Answer:
-        """Check if a model (can be partial) satisfies all clauses
-
-        Args:
-            model (dict[int, bool]): The model to check
-
-        Returns:
-            bool: True if the model satisfies all clauses, False otherwise
-        """
-        for clause in self.clauses:
-            correct = False
-            has_unassigned = False
-
-            for var in clause:
-                if abs(var) in model:
-                    if var > 0:
-                        if model[abs(var)]:
-                            correct = True
-                            break
-                    else:
-                        if not model[abs(var)]:
-                            correct = True
-                            break
-                else:
-                    has_unassigned = True
-
-            if not correct:
-                if has_unassigned:
-                    return Answer.UNKNOWN
-                else:
-                    return Answer.FALSE
-        return Answer.TRUE
-
-
-class KB_l:
-    def __init__(self, from_clauses: list[list[int]] = None, vars_: list[int] = None):
-        self.clauses: list[list[int]] = []
-        self.vars: list[int] = []
-
-        if from_clauses is not None:
-            self.clauses = from_clauses
-        if vars_ is not None:
-            self.vars = vars_
-
-    def add_clause(self, clause: list[int]):
-        self.clauses.append(clause)
-        self.vars.update(map(abs, clause))
-
-    def add_clauses(self, clauses: list[list[int]]):
-        self.clauses.extend(clauses)
-        for clause in clauses:
-            self.vars.update(map(abs, clause))
+            self.vars.extend(map(abs, clause))
 
     def is_satisfied(self, model: dict[int, bool]) -> bool:
         """Check if a model (can be partial) satisfies all clauses
@@ -319,78 +252,78 @@ class hashable_dict(dict):
         return hash(tuple(sorted(self.items())))
 
 
-class Node:
-    __slots__ = ["model", "h"]
+# class Node:
+#     __slots__ = ["model", "h"]
 
-    def __init__(self, model: hashable_dict[int, bool], h: int):
-        self.model = model
-        self.h = h
+#     def __init__(self, model: hashable_dict[int, bool], h: int):
+#         self.model = model
+#         self.h = h
 
-    def __lt__(self, other):
-        return self.h < other.h
-
-
-def a_star_search(kb: KB, init_model: hashable_dict[int, bool]) -> bool:
-    h = undetermined_clauses(kb, init_model)
-    # if h is None:
-    #     return False
-
-    node = Node(copy.deepcopy(init_model), h)
-
-    frontier = []
-    heapq.heappush(frontier, node)
-    explored = set()
-
-    while True:
-        if not frontier:
-            return False
-
-        node = heapq.heappop(frontier)
-
-        if node.model in explored:
-            continue
-
-        # if kb.is_satisfied(node.model):
-        #     return True
-
-        if node.h == 0:
-            return True
-
-        explored.add(node.model)
-
-        for child_model in child_models(kb, node.model):
-            if child_model in explored:
-                continue
-
-            h = undetermined_clauses(kb, child_model)
-            if h is None:
-                continue
-
-            heapq.heappush(frontier, Node(child_model, h))
+#     def __lt__(self, other):
+#         return self.h < other.h
 
 
-def a_star_solve(field):
-    clauses, vars_ = construct_CNF_clauses(field)
+# def a_star_search(kb: KB, init_model: hashable_dict[int, bool]) -> bool:
+#     h = undetermined_clauses(kb, init_model)
+#     # if h is None:
+#     #     return False
 
-    kb = KB(clauses, vars_)
+#     node = Node(copy.deepcopy(init_model), h)
 
-    # if not a_star_search(kb, hashable_dict()):
-    #     raise ValueError("Unsolvable grid")
+#     frontier = []
+#     heapq.heappush(frontier, node)
+#     explored = set()
 
-    # print("ok")
+#     while True:
+#         if not frontier:
+#             return False
 
-    height = len(field)
-    width = len(field[0])
+#         node = heapq.heappop(frontier)
 
-    flagged_field = copy.deepcopy(field)
-    for var in vars_:
-        if not a_star_search(kb, hashable_dict({var: False})):
-            flagged_field[(var - 1) // width][(var - 1) % width] = FLAGGED
+#         if node.model in explored:
+#             continue
 
-    return flagged_field
+#         # if kb.is_satisfied(node.model):
+#         #     return True
+
+#         if node.h == 0:
+#             return True
+
+#         explored.add(node.model)
+
+#         for child_model in child_models(kb, node.model):
+#             if child_model in explored:
+#                 continue
+
+#             h = undetermined_clauses(kb, child_model)
+#             if h is None:
+#                 continue
+
+#             heapq.heappush(frontier, Node(child_model, h))
 
 
-def brute_force_solve(field):
+# def a_star_solve(field):
+#     clauses, vars_ = construct_CNF_clauses(field)
+
+#     kb = KB(clauses, vars_)
+
+#     # if not a_star_search(kb, hashable_dict()):
+#     #     raise ValueError("Unsolvable grid")
+
+#     # print("ok")
+
+#     height = len(field)
+#     width = len(field[0])
+
+#     flagged_field = copy.deepcopy(field)
+#     for var in vars_:
+#         if not a_star_search(kb, hashable_dict({var: False})):
+#             flagged_field[(var - 1) // width][(var - 1) % width] = FLAGGED_VAL
+
+#     return flagged_field
+
+
+def brute_force_solve(field: Field) -> Field:
     clauses, vars_ = construct_CNF_clauses(field)
 
     kb = KB(clauses, vars_)
@@ -418,7 +351,7 @@ def brute_force_solve(field):
             if not to_flag:
                 break
         if to_flag:
-            flagged_field[(var - 1) // width][(var - 1) % width] = FLAGGED
+            flagged_field[(var - 1) // width][(var - 1) % width] = FLAGGED_VAL
 
     return flagged_field
 
@@ -445,7 +378,7 @@ def backtracking_search(kb: KB, model: dict[int, bool]) -> bool:
     return False
 
 
-def test(kb: KB_l, model: dict[int, bool], exclude, idx=0) -> bool:
+def backtrack(kb: KB, model: dict[int, bool], exclude, idx=0) -> bool:
     ans = kb.is_satisfied_t(model)
     if ans == Answer.TRUE:
         return True
@@ -453,36 +386,15 @@ def test(kb: KB_l, model: dict[int, bool], exclude, idx=0) -> bool:
         return False
 
     if idx == exclude:
-        return test(kb, model, exclude, idx + 1)
+        return backtrack(kb, model, exclude, idx + 1)
     if idx == len(kb.vars):
         return False
 
     for child in (False, True):
         child_model = model.copy()
         child_model[kb.vars[idx]] = child
-        if test(kb, child_model, exclude, idx + 1):
+        if backtrack(kb, child_model, exclude, idx + 1):
             return True
-
-    return False
-
-
-def test2(kb: KB, model: dict[int, bool]) -> bool:
-    ans = kb.is_satisfied_t(model)
-    if ans == Answer.TRUE:
-        return True
-    if ans == Answer.FALSE:
-        return False
-
-    for var in kb.vars:
-        if var in model:
-            continue
-
-        for val in (False, True):
-            child_model = model.copy()
-            child_model[var] = val
-            if test2(kb, child_model):
-                return True
-        break
 
     return False
 
@@ -499,29 +411,7 @@ def backtracking_solve(field):
 
     flagged_field = copy.deepcopy(field)
     for i, var in enumerate(vars_):
-        model = dict()
-        model[var] = False
-        if not test2(kb, model):
-            flagged_field[(var - 1) // width][(var - 1) % width] = FLAGGED
-
-    return flagged_field
-
-
-def backtracking_solve2(field):
-    clauses, vars_ = construct_CNF_clauses(field)
-
-    kb = KB_l(clauses, list(vars_))
-
-    # TODO: checking if the model is solvable or not
-
-    height = len(field)
-    width = len(field[0])
-
-    flagged_field = copy.deepcopy(field)
-    for i, var in enumerate(vars_):
-        model = dict()
-        model[var] = False
-        if not test(kb, model, i):
-            flagged_field[(var - 1) // width][(var - 1) % width] = FLAGGED
+        if not backtrack(kb, {var: False}, i):
+            flagged_field[(var - 1) // width][(var - 1) % width] = FLAGGED_VAL
 
     return flagged_field
