@@ -1,2 +1,4 @@
-from minesweeper.solver import *
-from minesweeper.utils import *
+from minesweeper.utils import read_field, print_field, write_field
+from minesweeper.brute_force_solver import brute_force_solve
+from minesweeper.backtracking_solver import backtracking_solve
+from minesweeper.a_star_solver import a_star_solve

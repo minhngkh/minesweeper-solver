@@ -2,10 +2,7 @@ from minesweeper._global import *
 
 import pysat.solvers
 import copy
-import heapq
 from typing import Iterable, Generator
-
-__all__ = ["pysat_solve", "brute_force_solve", "backtracking_solve"]
 
 
 def combinations(iterable: Iterable, r: int) -> Generator[tuple, None, None]:
@@ -37,7 +34,7 @@ def construct_CNF_clauses(field: Field) -> tuple[list[Clause], list[int]]:
     height = len(field)
     width = len(field[0])
     clauses = []
-    vars_ = []
+    vars_ = set()
 
     # Add CNF clauses for each opened cell.
     for i in range(height):
@@ -71,7 +68,7 @@ def construct_CNF_clauses(field: Field) -> tuple[list[Clause], list[int]]:
                     pos = y * width + x + 1
                     neighbors.append(pos)
 
-            vars_.extend(neighbors)
+            vars_.update(neighbors)
 
             # Encode "at most" constraint as CNF clauses
             for c in combinations(neighbors, surrounded_mines + 1):
@@ -81,7 +78,7 @@ def construct_CNF_clauses(field: Field) -> tuple[list[Clause], list[int]]:
             for c in combinations(neighbors, len(neighbors) - surrounded_mines + 1):
                 clauses.append([x for x in c])
 
-    return clauses, vars_
+    return clauses, list(vars_)
 
 
 def pysat_solve(field):
@@ -111,15 +108,18 @@ class KB:
         self,
         from_clauses: list[Clause] | None = None,
         vars_: list[int] | None = None,
+        create_vars_set: bool = False,
     ) -> None:
         if from_clauses is None:
             self.clauses = []
         else:
-            self.clauses = from_clauses 
+            self.clauses = from_clauses
         if vars_ is None:
             self.vars = []
         else:
             self.vars = vars_
+            if create_vars_set:
+                self.vars_set = set(vars_)
 
     def add_clause(self, clause: list[int]) -> None:
         self.clauses.append(clause)
@@ -191,227 +191,64 @@ class KB:
                     return Answer.FALSE
         return Answer.TRUE
 
+    def is_satisfied_r(self, model: dict[int, bool]) -> tuple[Answer, int]:
+        count = 0
 
-def undetermined_clauses(kb: KB, model: dict[int, bool]) -> int | None:
-    """Get the number of undetermined clauses when applying in a model.
+        for clause in self.clauses:
+            correct = False
+            has_unassigned = False
 
-    Args:
-        cnf (CNF): clauses
-        model (dict[int, bool]): model to check
-
-    Returns:
-        int | None: return the number unless the model does not satisfy KB
-    """
-    if kb.is_satisfied(model):
-        return 0
-    else:
-        return 1
-
-    count = 0
-
-    for clause in kb.clauses:
-        correct = False
-        has_unknown_var = False
-
-        for var in clause:
-            if abs(var) in model:
-                if var > 0:
-                    if model[abs(var)]:
-                        correct = True
-                        break
+            for var in clause:
+                if abs(var) in model:
+                    if var > 0:
+                        if model[abs(var)]:
+                            correct = True
+                            break
+                    else:
+                        if not model[abs(var)]:
+                            correct = True
+                            break
                 else:
-                    if not model[abs(var)]:
-                        correct = True
-                        break
-            else:
-                has_unknown_var = True
+                    has_unassigned = True
 
-        if correct:
-            continue
-        elif has_unknown_var:
-            count += 1
-        else:
-            return None
+            if not correct:
+                if has_unassigned:
+                    count += 1
+                    # return Answer.UNKNOWN, -1
+                else:
+                    return Answer.FALSE, -1
 
-    return count
+        if count == 0:
+            return Answer.TRUE, count
+        return Answer.UNKNOWN, count
 
+    def is_satisfied_l(self, model: list[int]) -> tuple[Answer, int]:
+        count = 0
 
-def child_models(cnf: KB, parent_model: dict[int, bool]):
-    for var in cnf.vars:
-        if var in parent_model:
-            continue
+        for clause in self.clauses:
+            correct = False
+            has_unassigned = False
 
-        for val in (True, False):
-            child_model = copy.deepcopy(parent_model)
-            child_model[var] = val
-            yield child_model
+            for var in clause:
+                if abs(var) in self.vars_set:
+                    if var > 0:
+                        if model[)]:
+                            correct = True
+                            break
+                    else:
+                        if not model[abs(var)]:
+                            correct = True
+                            break
+                else:
+                    has_unassigned = True
 
+            if not correct:
+                if has_unassigned:
+                    count += 1
+                    # return Answer.UNKNOWN, -1
+                else:
+                    return Answer.FALSE, -1
 
-class hashable_dict(dict):
-    def __hash__(self):
-        return hash(tuple(sorted(self.items())))
-
-
-# class Node:
-#     __slots__ = ["model", "h"]
-
-#     def __init__(self, model: hashable_dict[int, bool], h: int):
-#         self.model = model
-#         self.h = h
-
-#     def __lt__(self, other):
-#         return self.h < other.h
-
-
-# def a_star_search(kb: KB, init_model: hashable_dict[int, bool]) -> bool:
-#     h = undetermined_clauses(kb, init_model)
-#     # if h is None:
-#     #     return False
-
-#     node = Node(copy.deepcopy(init_model), h)
-
-#     frontier = []
-#     heapq.heappush(frontier, node)
-#     explored = set()
-
-#     while True:
-#         if not frontier:
-#             return False
-
-#         node = heapq.heappop(frontier)
-
-#         if node.model in explored:
-#             continue
-
-#         # if kb.is_satisfied(node.model):
-#         #     return True
-
-#         if node.h == 0:
-#             return True
-
-#         explored.add(node.model)
-
-#         for child_model in child_models(kb, node.model):
-#             if child_model in explored:
-#                 continue
-
-#             h = undetermined_clauses(kb, child_model)
-#             if h is None:
-#                 continue
-
-#             heapq.heappush(frontier, Node(child_model, h))
-
-
-# def a_star_solve(field):
-#     clauses, vars_ = construct_CNF_clauses(field)
-
-#     kb = KB(clauses, vars_)
-
-#     # if not a_star_search(kb, hashable_dict()):
-#     #     raise ValueError("Unsolvable grid")
-
-#     # print("ok")
-
-#     height = len(field)
-#     width = len(field[0])
-
-#     flagged_field = copy.deepcopy(field)
-#     for var in vars_:
-#         if not a_star_search(kb, hashable_dict({var: False})):
-#             flagged_field[(var - 1) // width][(var - 1) % width] = FLAGGED_VAL
-
-#     return flagged_field
-
-
-def brute_force_solve(field: Field) -> Field:
-    clauses, vars_ = construct_CNF_clauses(field)
-
-    kb = KB(clauses, vars_)
-
-    # for true_vars in combinations(vars_, len(vars_)):
-    #     model = {var: True if var in true_vars else False for var in vars_}
-    #     if kb.is_satisfied(model):
-    #         break
-
-    height = len(field)
-    width = len(field[0])
-
-    flagged_field = copy.deepcopy(field)
-    for var in vars_:
-        new_vars = [x for x in vars_ if x != var]
-
-        to_flag = True
-        for i in range(1, len(vars_)):
-            for true_vars in combinations(new_vars, i):
-                model = {var: True if var in true_vars else False for var in new_vars}
-                model[var] = False
-                if kb.is_satisfied(model):
-                    to_flag = False
-                    break
-            if not to_flag:
-                break
-        if to_flag:
-            flagged_field[(var - 1) // width][(var - 1) % width] = FLAGGED_VAL
-
-    return flagged_field
-
-
-def backtracking_search(kb: KB, model: dict[int, bool]) -> bool:
-    if kb.is_satisfied(model):
-        return True
-
-    assigned = set(model.keys())
-    for var in kb.vars:
-        if var in assigned:
-            continue
-
-        child_model = copy.deepcopy(model)
-        child_model[var] = False
-        if backtracking_search(kb, child_model):
-            return True
-
-        child_model = copy.deepcopy(model)
-        child_model[var] = True
-        if backtracking_search(kb, child_model):
-            return True
-
-    return False
-
-
-def backtrack(kb: KB, model: dict[int, bool], exclude, idx=0) -> bool:
-    ans = kb.is_satisfied_t(model)
-    if ans == Answer.TRUE:
-        return True
-    if ans == Answer.FALSE:
-        return False
-
-    if idx == exclude:
-        return backtrack(kb, model, exclude, idx + 1)
-    if idx == len(kb.vars):
-        return False
-
-    for child in (False, True):
-        child_model = model.copy()
-        child_model[kb.vars[idx]] = child
-        if backtrack(kb, child_model, exclude, idx + 1):
-            return True
-
-    return False
-
-
-def backtracking_solve(field):
-    clauses, vars_ = construct_CNF_clauses(field)
-
-    kb = KB(clauses, vars_)
-
-    # TODO: checking if the model is solvable or not
-
-    height = len(field)
-    width = len(field[0])
-
-    flagged_field = copy.deepcopy(field)
-    for i, var in enumerate(vars_):
-        if not backtrack(kb, {var: False}, i):
-            flagged_field[(var - 1) // width][(var - 1) % width] = FLAGGED_VAL
-
-    return flagged_field
+        if count == 0:
+            return Answer.TRUE, count
+        return Answer.UNKNOWN, count

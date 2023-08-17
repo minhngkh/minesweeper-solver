@@ -1,10 +1,12 @@
 import minesweeper as ms
 import time
+import old
 
 
 size = "5x5"
 i_path = f"testcases/input_{size}.txt"
 o_path = f"testcases/output_{size}.txt"
+
 
 if __name__ == "__main__":
     data = ms.read_field("test.txt")
@@ -12,7 +14,7 @@ if __name__ == "__main__":
 
     try:
         start = time.process_time()
-        solution = ms.brute_force_solve(data)
+        solution = ms.a_star_solve(data)
         elapsed = time.process_time() - start
         if solution:
             ms.print_field(solution)
