@@ -1,7 +1,5 @@
-from minesweeper._global import *
+from minesweeper._global import Field, Answer, Clause, FLAGGED_VAL, UNOPENED_VAL
 
-import pysat.solvers
-import copy
 from typing import Iterable, Generator
 
 
@@ -81,28 +79,6 @@ def construct_CNF_clauses(field: Field) -> tuple[list[Clause], list[int]]:
     return clauses, list(vars_)
 
 
-def pysat_solve(field):
-    height = len(field)
-    width = len(field[0])
-
-    clauses, vars_ = construct_CNF_clauses(field)
-    solver = pysat.solvers.Solver(bootstrap_with=clauses)
-
-    # Check if the grid is valid (solvable) or not (satisfiable check)
-    if not solver.solve():
-        raise ValueError("Unsolvable grid")
-
-    # For every variable appears in the KB, we use resolution refutation to check if that
-    # variable is true, which means the corresponding cell contains a mine.
-    flagged_field = copy.deepcopy(field)
-    for var in vars_:
-        if not solver.solve(assumptions=[-var]):
-            flagged_field[(var - 1) // width][(var - 1) % width] = FLAGGED_VAL
-
-    solver.delete()
-    return flagged_field
-
-
 class KB:
     def __init__(
         self,
@@ -158,40 +134,19 @@ class KB:
 
         return True
 
-    def is_satisfied_t(self, model: dict[int, bool]) -> Answer:
-        """Check if a model (can be partial) satisfies all clauses
+    def is_satisfied_extended(self, model: dict[int, bool]) -> tuple[Answer, int]:
+        """Check if a model (can be partial) satisfies all clauses (extended version)
 
         Args:
             model (dict[int, bool]): The model to check
 
         Returns:
-            bool: True if the model satisfies all clauses, False otherwise
+            tuple[Answer, int]:
+                - Answer: can be TRUE, FALSE, or UNKNOWN (when there are
+                  undetermined clauses).
+                - int: number of undetermined clauses (0 for TRUE, -1 for FALSE)
         """
-        for clause in self.clauses:
-            correct = False
-            has_unassigned = False
 
-            for var in clause:
-                if abs(var) in model:
-                    if var > 0:
-                        if model[abs(var)]:
-                            correct = True
-                            break
-                    else:
-                        if not model[abs(var)]:
-                            correct = True
-                            break
-                else:
-                    has_unassigned = True
-
-            if not correct:
-                if has_unassigned:
-                    return Answer.UNKNOWN
-                else:
-                    return Answer.FALSE
-        return Answer.TRUE
-
-    def is_satisfied_r(self, model: dict[int, bool]) -> tuple[Answer, int]:
         count = 0
 
         for clause in self.clauses:
@@ -222,39 +177,16 @@ class KB:
             return Answer.TRUE, count
         return Answer.UNKNOWN, count
 
-    def is_satisfied_l(self, model: tuple[bool | None]) -> tuple[Answer, int]:
-        count = 0
+    def num_false_clauses(self, model: tuple[bool | None]) -> int:
+        """Count the number of false clauses (can be partial)
 
-        for clause in self.clauses:
-            correct = False
-            has_unassigned = False
+        Args:
+            model (tuple[bool  |  None]): The model to apply
 
-            for var in clause:
-                val = model[self.idx_dict[abs(var)]]
-                if val is not None:
-                    if var > 0:
-                        if val:
-                            correct = True
-                            break
-                    else:
-                        if not val:
-                            correct = True
-                            break
-                else:
-                    has_unassigned = True
+        Returns:
+            int: number of clauses that are false
+        """
 
-            if not correct:
-                if has_unassigned:
-                    count += 1
-                    # return Answer.UNKNOWN, -1
-                else:
-                    return Answer.FALSE, -1
-
-        if count == 0:
-            return Answer.TRUE, count
-        return Answer.UNKNOWN, count
-
-    def h(self, model: tuple[bool | None]) -> int:
         count = 0
 
         for clause in self.clauses:

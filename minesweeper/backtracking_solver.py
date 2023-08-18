@@ -1,12 +1,14 @@
-from minesweeper._global import *
+from minesweeper._global import Field, Answer, FLAGGED_VAL
 from minesweeper.solver import KB, construct_CNF_clauses
 
 import copy
 import time
 
 
-def backtracking_search(kb: KB, model: dict[int, bool], exclude, idx=0) -> bool:
-    ans, _= kb.is_satisfied_r(model)
+def backtracking_search(
+    kb: KB, model: dict[int, bool], exclude: int = -1, idx: int = 0
+) -> bool:
+    ans, _ = kb.is_satisfied_extended(model)
     if ans == Answer.TRUE:
         return True
     if ans == Answer.FALSE:
@@ -26,20 +28,29 @@ def backtracking_search(kb: KB, model: dict[int, bool], exclude, idx=0) -> bool:
     return False
 
 
-def backtracking_solve(field):
+def backtracking_solve(
+    field: Field, check_field: bool = False, display_checking_time: bool = True
+) -> Field:
     clauses, vars_ = construct_CNF_clauses(field)
+    kb = KB(clauses, vars_, create_idx_dict=True)
 
-    kb = KB(clauses, vars_)
+    if check_field:
+        start = 0
+        if display_checking_time:
+            start = time.process_time()
 
-    # TODO: checking if the model is solvable or not
+        if not backtracking_search(kb, {}):
+            raise ValueError("Unsolvable grid")
+
+        if display_checking_time:
+            print("check: ", time.process_time() - start, "s")
 
     height = len(field)
     width = len(field[0])
 
     flagged_field = copy.deepcopy(field)
     for i, var in enumerate(vars_):
-        start = time.process_time()
         if not backtracking_search(kb, {var: False}, i):
             flagged_field[(var - 1) // width][(var - 1) % width] = FLAGGED_VAL
-        print(time.process_time() - start)
+
     return flagged_field
