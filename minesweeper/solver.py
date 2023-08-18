@@ -108,7 +108,7 @@ class KB:
         self,
         from_clauses: list[Clause] | None = None,
         vars_: list[int] | None = None,
-        create_vars_set: bool = False,
+        create_idx_dict: bool = False,
     ) -> None:
         if from_clauses is None:
             self.clauses = []
@@ -118,8 +118,8 @@ class KB:
             self.vars = []
         else:
             self.vars = vars_
-            if create_vars_set:
-                self.vars_set = set(vars_)
+            if create_idx_dict:
+                self.idx_dict = {var: i for i, var in enumerate(vars_)}
 
     def add_clause(self, clause: list[int]) -> None:
         self.clauses.append(clause)
@@ -222,7 +222,7 @@ class KB:
             return Answer.TRUE, count
         return Answer.UNKNOWN, count
 
-    def is_satisfied_l(self, model: list[int]) -> tuple[Answer, int]:
+    def is_satisfied_l(self, model: tuple[bool | None]) -> tuple[Answer, int]:
         count = 0
 
         for clause in self.clauses:
@@ -230,13 +230,14 @@ class KB:
             has_unassigned = False
 
             for var in clause:
-                if abs(var) in self.vars_set:
+                val = model[self.idx_dict[abs(var)]]
+                if val is not None:
                     if var > 0:
-                        if model[)]:
+                        if val:
                             correct = True
                             break
                     else:
-                        if not model[abs(var)]:
+                        if not val:
                             correct = True
                             break
                 else:
@@ -252,3 +253,23 @@ class KB:
         if count == 0:
             return Answer.TRUE, count
         return Answer.UNKNOWN, count
+
+    def h(self, model: tuple[bool | None]) -> int:
+        count = 0
+
+        for clause in self.clauses:
+            correct = False
+
+            for var in clause:
+                if var > 0:
+                    if model[self.idx_dict[abs(var)]]:
+                        correct = True
+                        break
+                else:
+                    if not model[self.idx_dict[abs(var)]]:
+                        correct = True
+                        break
+
+            if not correct:
+                count += 1
+        return count
