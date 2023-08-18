@@ -2,6 +2,7 @@ from minesweeper._global import *
 from minesweeper.solver import KB, construct_CNF_clauses
 
 import copy
+import time
 
 
 def backtracking_search(kb: KB, model: dict[int, bool], exclude, idx=0) -> bool:
@@ -37,7 +38,8 @@ def backtracking_solve(field):
 
     flagged_field = copy.deepcopy(field)
     for i, var in enumerate(vars_):
+        start = time.process_time()
         if not backtracking_search(kb, {var: False}, i):
             flagged_field[(var - 1) // width][(var - 1) % width] = FLAGGED_VAL
-
+        print(time.process_time() - start)
     return flagged_field
